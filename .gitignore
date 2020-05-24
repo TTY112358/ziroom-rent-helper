@@ -1,0 +1,11 @@
+# hell of npm
+/node_modules
+/node_modules/**
+
+#cached resources: pages, etc.
+/cache
+/cache/**
+
+# compiled .js codes
+/dist
+/dist/**

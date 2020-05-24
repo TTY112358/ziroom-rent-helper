@@ -1,0 +1,21 @@
+{
+  "name": "scrap-bei-ke",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "3.9.3"
+  },
+  "dependencies": {
+    "@types/superagent": "4.1.7",
+    "node-html-parser": "1.2.16",
+    "superagent": "5.2.2",
+    "superagent-throttle": "1.0.1"
+  }
+}
