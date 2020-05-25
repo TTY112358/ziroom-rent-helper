@@ -2,7 +2,9 @@ import superAgent from "superagent";
 import {HTMLElement} from "node-html-parser";
 // @ts-ignore
 import Throttle from 'superagent-throttle';
-import {ParallelTaskNode, ScrapPagePipelineNode, TaskNode} from "../scrapers/scraper";
+import {TaskNode} from "../nodes/task-node";
+import {ScrapPagePipelineNode} from "../nodes/scrap-page-pipeline-node";
+import {ParallelTaskNode} from "../nodes/parallel-task-node";
 
 
 async function main() {
