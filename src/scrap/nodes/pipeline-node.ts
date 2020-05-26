@@ -1,3 +1,5 @@
+import {Task} from "../tools/task";
+
 export type PipelineNodeInput<T> = {
     name?: string,
     previousNode?: PipelineNode<any, T>,
@@ -5,17 +7,17 @@ export type PipelineNodeInput<T> = {
     inputPromise?: Promise<T>,
 };
 
-export class PipelineNode<TIn = any, TOut = any> {
+export abstract class PipelineNode<TIn = any, TOut = any> {
     static nodeCounter: number = 0;
     name: string;
     previousNode: null | PipelineNode<any, TIn>;
     input: null | TIn;
     inputPromise: null | Promise<TIn>;
     nextNodes: PipelineNode<TOut>[];
-    task: Promise<TOut> | null;
+    task: Task<TOut>;
     result: TOut | null;
 
-    constructor(props: PipelineNodeInput<TIn>) {
+    protected constructor(props: PipelineNodeInput<TIn>) {
         if (props.name !== undefined && props.name.length > 0) {
             this.name = name;
         } else {
@@ -37,7 +39,7 @@ export class PipelineNode<TIn = any, TOut = any> {
             this.inputPromise = inputPromise;
         }
         this.nextNodes = [];
-        this.task = null;
+        this.task = this.getNodeTask();
         this.result = null;
     }
 
@@ -83,14 +85,18 @@ export class PipelineNode<TIn = any, TOut = any> {
         return this;
     }
 
-    async runInternal(input: TIn): Promise<TOut> {
-        throw new Error("not implemented")
-    };
+    chainNextNode<T = any>(nextNode: PipelineNode<TOut, T>): PipelineNode<TOut, T> {
+        this.nextNodes.push(nextNode);
+        nextNode.previousNode = this;
+        return nextNode;
+    }
+
+    abstract getNodeTask(): Task<TOut> ;
 
     async run(): Promise<void> {
         if (!this.result) {
-            const input = await this.getInput();
-            this.result = await this.runInternal(input);
+            this.task.start();
+            this.result = await this.task;
         }
     }
 }
