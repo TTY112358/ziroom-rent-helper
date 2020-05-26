@@ -3,11 +3,21 @@ type TaskStatus = 'created' | 'pending' | 'fullfilled' | 'rejected';
 export class Task<T> extends Promise<T> {
     status: TaskStatus;
     result: T | null;
+    // @ts-ignore
+    _resolve;
+    // @ts-ignore
+    _reject;
     protected executor: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void;
     protected promise: Promise<T> | null;
 
     constructor(executor: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void) {
-        super((resolve) => resolve());
+        let _resolve, _reject;
+        super((resolve, reject) => {
+            _resolve = resolve;
+            _reject = reject;
+        });
+        this._resolve = _resolve;
+        this._reject = _reject;
         this.executor = executor;
         this.promise = null;
         this.status = "created";
@@ -49,9 +59,11 @@ export class Task<T> extends Promise<T> {
         return new Promise(this.executor).then(data => {
             this.status = "fullfilled";
             this.result = data;
+            this._resolve(data);
             return data;
         }, reason => {
-            this.status = "rejected"
+            this.status = "rejected";
+            this._reject(reason);
             throw reason;
         });
     }

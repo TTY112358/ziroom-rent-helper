@@ -11,14 +11,14 @@ export class ParallelTaskNode<TIn, TOut> extends PipelineNode<TIn[], TOut[]> {
     tasks: Task<TOut>[];
     protected singleTaskDoneListener: (singleTask: Task<TOut>, eleIndex: number) => void;
     protected wholeTaskDoneListener: (wholeTask: Task<TOut[]>) => void;
-    private readonly isPurePipeNode: boolean;
-    private readonly taskFunc: ParallelTaskNodeTaskFunc<TIn, TOut>;
+    protected readonly taskFunc: ParallelTaskNodeTaskFunc<TIn, TOut>;
 
     constructor(props: ParallelTaskNodeInput<TIn>, taskFunc: ParallelTaskNodeTaskFunc<TIn, TOut>) {
         super(props);
         this.inputPromises = null;
         if (!this.previousNode && !this.input && !this.inputPromise && props.inputPromises) {
             this.inputPromises = props.inputPromises;
+            this.task = this.getNodeTask();
         }
         this.taskFunc = taskFunc;
         this.singleTaskDoneListener = () => {
@@ -26,7 +26,10 @@ export class ParallelTaskNode<TIn, TOut> extends PipelineNode<TIn[], TOut[]> {
         this.wholeTaskDoneListener = () => {
         };
         this.tasks = [];
-        this.isPurePipeNode = (this.inputPromises !== null) || (this.previousNode !== null) && (this.previousNode instanceof ParallelTaskNode);
+    }
+
+    protected get isPurePipeNode(): boolean {
+        return (!!this.inputPromises) || (!!this.previousNode) && (this.previousNode instanceof ParallelTaskNode);
     }
 
     getNodeTask(): Task<TOut[]> {
@@ -56,7 +59,9 @@ export class ParallelTaskNode<TIn, TOut> extends PipelineNode<TIn[], TOut[]> {
                 return singleTask;
             });
             return new Task<TOut[]>(async resolve => {
-                resolve(Promise.all(this.tasks));
+                const result = await Promise.all(this.tasks);
+                this.wholeTaskDoneListener(this.task);
+                resolve(result);
             });
         } else {
             const previousParallelTaskNode = this.previousNode as ParallelTaskNode<any, TIn>;
@@ -71,7 +76,9 @@ export class ParallelTaskNode<TIn, TOut> extends PipelineNode<TIn[], TOut[]> {
             });
             return new Task<TOut[]>(async resolve => {
                 await previousParallelTaskNode.task;
-                resolve(Promise.all(this.tasks));
+                const result = await Promise.all(this.tasks);
+                this.wholeTaskDoneListener(this.task);
+                resolve(result);
             });
         }
     }

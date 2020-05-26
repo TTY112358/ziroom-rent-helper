@@ -57,12 +57,14 @@ export abstract class PipelineNode<TIn = any, TOut = any> {
     async getOutput(): Promise<TOut> {
         if (this.result) {
             return this.result;
-        } else if (this.task) {
-            this.result = await this.task;
-            return this.result;
         } else {
-            await this.run();
-            return this.result as TOut;
+            try {
+                this.result = await this.task;
+                return this.result;
+            }catch (e) {
+                console.error(e);
+                throw e;
+            }
         }
     }
 
@@ -83,12 +85,6 @@ export abstract class PipelineNode<TIn = any, TOut = any> {
             pipelineNodeOrNodes.previousNode = this;
         }
         return this;
-    }
-
-    chainNextNode<T = any>(nextNode: PipelineNode<TOut, T>): PipelineNode<TOut, T> {
-        this.nextNodes.push(nextNode);
-        nextNode.previousNode = this;
-        return nextNode;
     }
 
     abstract getNodeTask(): Task<TOut> ;
