@@ -61,7 +61,7 @@ export abstract class PipelineNode<TIn = any, TOut = any> {
             try {
                 this.result = await this.task;
                 return this.result;
-            }catch (e) {
+            } catch (e) {
                 console.error(e);
                 throw e;
             }
@@ -93,6 +93,16 @@ export abstract class PipelineNode<TIn = any, TOut = any> {
         if (!this.result) {
             this.task.start();
             this.result = await this.task;
+        }
+    }
+
+    async getReorderFunction(): Promise<(arr: []) => []> {
+        if (this.previousNode) {
+            return this.previousNode.getReorderFunction();
+        } else {
+            return (arr) => {
+                return [...arr];
+            };
         }
     }
 }
