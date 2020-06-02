@@ -1,10 +1,14 @@
-import {Task} from "../tools/task";
+import {NodeTask} from "../tools/task";
 
 export type PipelineNodeInput<T> = {
     name?: string,
     previousNode?: PipelineNode<any, T>,
     input?: T,
     inputPromise?: Promise<T>,
+};
+
+export type ParalleledOutputNodeInput<T> = PipelineNodeInput<T[]> & {
+    inputPromises?: Promise<T>[]
 };
 
 export abstract class PipelineNode<TIn = any, TOut = any> {
@@ -14,7 +18,7 @@ export abstract class PipelineNode<TIn = any, TOut = any> {
     input: null | TIn;
     inputPromise: null | Promise<TIn>;
     nextNodes: PipelineNode<TOut>[];
-    task: Task<TOut>;
+    task: NodeTask<TOut>;
     result: TOut | null;
 
     protected constructor(props: PipelineNodeInput<TIn>) {
@@ -87,7 +91,7 @@ export abstract class PipelineNode<TIn = any, TOut = any> {
         return this;
     }
 
-    abstract getNodeTask(): Task<TOut> ;
+    abstract getNodeTask(): NodeTask<TOut> ;
 
     async run(): Promise<void> {
         if (!this.result) {
@@ -105,4 +109,37 @@ export abstract class PipelineNode<TIn = any, TOut = any> {
             };
         }
     }
+}
+
+export abstract class ParalleledOutputNode<TIn, TOut> extends PipelineNode<TIn[], TOut[]> {
+
+    inputPromises: Promise<TIn>[] | null;
+    protected singleTaskDoneListeners: ((singleTask: NodeTask<TOut>, eleIndex: number) => void)[];
+    protected wholeTaskDoneListeners: ((wholeTask: NodeTask<TOut[]>) => void)[];
+    tasks: NodeTask<TOut>[];
+
+    protected constructor(props: ParalleledOutputNodeInput<TIn>) {
+        super(props);
+        this.inputPromises = null;
+        if (!this.previousNode && !this.input && !this.inputPromise && props.inputPromises) {
+            this.inputPromises = props.inputPromises;
+            this.task = this.getNodeTask();
+        }
+        this.singleTaskDoneListeners = [];
+        this.wholeTaskDoneListeners = [];
+        this.tasks = [];
+    }
+
+    protected get isPurePipeNode(): boolean {
+        return !!(this.inputPromises || this.previousNode && this.previousNode instanceof ParalleledOutputNode);
+    }
+
+    onSingleTaskDone(listener: (singleTask: NodeTask<TOut>, eleIndex: number) => void) {
+        this.singleTaskDoneListeners.push(listener);
+    }
+
+    onWholeTaskDone(listener: (wholeTask: NodeTask<TOut[]>) => void) {
+        this.wholeTaskDoneListeners.push(listener);
+    }
+
 }

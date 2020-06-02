@@ -1,83 +1,69 @@
-import {ParallelTaskNode, ParallelTaskNodeInput} from "./parallel-task-node";
-import {Task} from "../tools/task";
+import {ParallelTaskNode} from "./parallel-task-node";
+import {NodeTask} from "../tools/task";
+import {ParalleledOutputNodeInput} from "./pipeline-node";
 
 export class ReduceNode<T> extends ParallelTaskNode<T[], T> {
     protected intervalRecords: [number, number][];
+    private hyperTasks: Promise<void>[];
 
-    constructor(props: ParallelTaskNodeInput<T[]>) {
+    constructor(props: ParalleledOutputNodeInput<T[]>) {
         super(props, (): never => {
             throw new Error("ReduceNode does not use taskFunc")
         });
         this.intervalRecords = [];
+        this.hyperTasks = [];
     }
 
-    getNodeTask(): Task<T[]> {
-        if (!this.isPurePipeNode) {
-            return new Task<T[]>(async resolve => {
-                const input = await this.getInput();
-                input.forEach((list, listIndex) => {
-                    this.intervalRecords[listIndex] = [this.tasks.length, -1];
-                    for (let i = 0; i < input.length; i++) {
-                        const ele = list[i];
-                        const l = this.tasks.length;
-                        const singleTask = new Task<T>(async resolve1 => {
-                            this.singleTaskDoneListener(singleTask, l);
-                            resolve1(ele);
-                        });
-                        this.tasks.push(singleTask);
-                    }
-                    this.intervalRecords[listIndex][1] = this.tasks.length;
+    getNodeTask(): NodeTask<T[]> {
+        const promiseLike2HyperTask = (list: T[] | Promise<T[]>, listIndex: number) => {
+            const previousTask = list instanceof NodeTask ? list : this.previousNode?.task;
+            return new Promise<void>(async resolve => {
+                const input = await list;
+                this.intervalRecords[listIndex] = [this.tasks.length, -1];
+                input.forEach((item, itemIndex) => {
+                    const len = this.tasks.length;
+                    const singleTask = new NodeTask<T>(async resolve1 => {
+                        this.singleTaskDoneListeners.forEach(l => l(singleTask, len));
+                        resolve1(item);
+                    }, this, previousTask, itemIndex);
+                    this.tasks.push(singleTask);
                 });
-                const result = await Promise.all(this.tasks);
-                this.wholeTaskDoneListener(this.task);
-                resolve(result);
+                this.intervalRecords[listIndex][1] = this.tasks.length;
+                resolve();
             });
+        };
+        if (!this.isPurePipeNode) {
+            return new NodeTask<T[]>(async resolve => {
+                const input = await this.getInput();
+                this.hyperTasks = input.map(promiseLike2HyperTask);
+                await Promise.all(this.hyperTasks);
+                const result = await Promise.all(this.tasks);
+                this.wholeTaskDoneListeners.forEach(l => l(this.task));
+                resolve(result);
+            }, this, this.previousNode?.task);
         } else if (this.inputPromises) {
             const promises = this.inputPromises;
-            return new Task<T[]>(async resolve => {
-                for (let listIndex = 0; listIndex < promises.length; listIndex++) {
-                    let inputPromise = promises[listIndex];
-                    const input = await inputPromise;
-                    this.intervalRecords[listIndex] = [this.tasks.length, -1];
-                    for (let i = 0; i < input.length; i++) {
-                        const ele = input[i];
-                        const l = this.tasks.length;
-                        const singleTask = new Task<T>(async resolve1 => {
-                            this.singleTaskDoneListener(singleTask, l);
-                            resolve1(ele);
-                        });
-                        this.tasks.push(singleTask);
-                    }
-                    this.intervalRecords[listIndex][1] = this.tasks.length;
-                }
+            return new NodeTask<T[]>(async resolve => {
+                this.hyperTasks = promises.map(promiseLike2HyperTask);
+                await Promise.all(this.hyperTasks);
                 const result = await Promise.all(this.tasks);
-                this.wholeTaskDoneListener(this.task);
+                this.wholeTaskDoneListeners.forEach(l => l(this.task));
                 resolve(result);
-            });
+            }, this, this.previousNode?.task);
         } else {
             const previousParallelTaskNode = this.previousNode as ParallelTaskNode<any, T[]>;
-            return new Task<T[]>(async resolve => {
-                previousParallelTaskNode.onSingleTaskDone(async (task, listIndex) => {
-                    const input = await task;
-                    this.intervalRecords[listIndex] = [this.tasks.length, -1];
-                    for (let i = 0; i < input.length; i++) {
-                        const ele = input[i];
-                        const l = this.tasks.length;
-                        const singleTask = new Task<T>(async resolve1 => {
-                            this.singleTaskDoneListener(singleTask, l);
-                            resolve1(ele);
-                        });
-                        this.tasks.push(singleTask);
-                    }
-                    this.intervalRecords[listIndex][1] = this.tasks.length;
+            return new NodeTask<T[]>(async resolve => {
+                previousParallelTaskNode.onSingleTaskDone((task, taskIndex) => {
+                    this.hyperTasks.push(promiseLike2HyperTask(task, taskIndex));
                 });
                 previousParallelTaskNode.onWholeTaskDone(async () => {
+                    await Promise.all(this.hyperTasks);
                     const result = await Promise.all(this.tasks);
-                    this.wholeTaskDoneListener(this.task);
+                    this.wholeTaskDoneListeners.forEach(l => l(this.task));
                     resolve(result);
                 });
                 previousParallelTaskNode.task.ensureStarted();
-            });
+            }, this, this.previousNode?.task);
         }
     }
 

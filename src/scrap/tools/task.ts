@@ -1,4 +1,7 @@
+import {PipelineNode} from "../nodes/pipeline-node";
+
 type TaskStatus = 'created' | 'pending' | 'fullfilled' | 'rejected';
+type Executor<T> = (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void;
 
 export class Task<T> extends Promise<T> {
     status: TaskStatus;
@@ -7,10 +10,10 @@ export class Task<T> extends Promise<T> {
     _resolve;
     // @ts-ignore
     _reject;
-    protected executor: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void;
+    protected executor: Executor<T>;
     protected promise: Promise<T> | null;
 
-    constructor(executor: (resolve: (value?: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void) {
+    constructor(executor: Executor<T>) {
         let _resolve, _reject;
         super((resolve, reject) => {
             _resolve = resolve;
@@ -76,5 +79,18 @@ export class Task<T> extends Promise<T> {
         if (!this.promise) {
             this.start();
         }
+    }
+}
+
+export class NodeTask<T> extends Task<T> {
+    sequenceInfo: number[];
+    protected currentNode: PipelineNode;
+    protected historyNodes: PipelineNode[];
+
+    constructor(props: Executor<T>, currentNode: PipelineNode, previousTask: NodeTask<any> | null = null, sequence: number = 0) {
+        super(props);
+        this.historyNodes = [...(previousTask?.historyNodes || []), currentNode];
+        this.sequenceInfo = [...(previousTask?.sequenceInfo || []), sequence];
+        this.currentNode = currentNode;
     }
 }

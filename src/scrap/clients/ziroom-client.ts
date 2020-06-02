@@ -3,9 +3,10 @@ import {HTMLElement} from "node-html-parser";
 // @ts-ignore
 import Throttle from 'superagent-throttle';
 import {TaskNode} from "../nodes/task-node";
-import {ScrapPagePipelineNode, ScrapPagePipelineNodeResult} from "../nodes/scrap-page-pipeline-node";
+import {ScrapPagePipelineNode} from "../nodes/scrap-page-pipeline-node";
 import {ParallelTaskNode} from "../nodes/parallel-task-node";
 import {ReduceNode} from "../nodes/reduce-node";
+import {ParallelMergeNode} from "../nodes/parallel-merge-node";
 
 
 async function main() {
@@ -34,7 +35,21 @@ async function main() {
         const aElements = optDivElement.querySelectorAll("div.grand-child-opt a.checkbox");
         return aElements.map(a => ({url: `http:${a.getAttribute("href")}`, subDistrict: a.text.trim()}));
     });
-    const n7 = new ReduceNode({previousNode: n6});
+    const m1 = new ParallelMergeNode<
+        [{url: string, district: string},{url: string, subDistrict: string}[]],
+        {url: string, district: string, subDistrict: string}[]
+        >({
+        sources: [
+            {previousNode: n3},
+            {previousNode: n6},
+        ]
+    }, ([n3Output , n6Output]) => {
+        return n6Output.map(({url, subDistrict}) => ({
+            url, subDistrict,
+            district: n3Output.district,
+        }));
+    });
+    const n7 = new ReduceNode({previousNode: m1});
     const n8 = new ParallelTaskNode({previousNode: n7}, e => e.url);
     const n9 = new ScrapPagePipelineNode({previousNode: n8});
     const n10 = new ParallelTaskNode({previousNode: n9}, ele => {
