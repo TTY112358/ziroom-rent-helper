@@ -45,27 +45,54 @@ export class ParallelMergeNode<TInTuple extends any[], TOut = any> extends Paral
         return new NodeTask<TOut[]>(async resolve => {
             const sourceNum = this.sources.length;
             const dataMatrix: (TInTuple[number] | undefined)[][] = new Array(sourceNum).fill(null).map(() => []);
-            const tasksResolvers: ((a: TOut) => void)[] = [];
+            const taskEmitResolvers: [((a: TOut) => void), () => void][] = [];
             const sourcesDone: boolean[] = new Array(sourceNum).fill(false);
             const checkAllSourcesOKAndDoAt = async (index: number) => {
                 const dataColumn = dataMatrix.map(dataRow => dataRow[index]);
                 if (!this.tasks[index]) {
-                    this.tasks[index] = new NodeTask<TOut>(resolve1 => tasksResolvers[index] = resolve1, this, null, index);
+                    let taskResolveFunc: ((a: TOut) => void), emitResolveFunc: () => void;
+                    this.tasks[index] = new NodeTask<TOut>(resolve1 => taskResolveFunc = resolve1, this, null, index);
                     this.tasks[index].ensureStarted();
+                    this.emitTasks[index] = new Promise<void>(resolve1 => emitResolveFunc = resolve1);
+                    // @ts-ignore
+                    taskEmitResolvers[index] = [taskResolveFunc, emitResolveFunc];
                 }
                 if (dataColumn.every(data => data !== undefined)) {
                     const result = await this.taskFunc(dataColumn as TInTuple);
-                    tasksResolvers[index](result);
-                    this.singleTaskDoneListeners.forEach(l => l(this.tasks[index], index));
+                    taskEmitResolvers[index][0](result);
+                    setImmediate(() => {
+                        this.singleTaskDoneListeners.forEach(l => l(this.tasks[index], index));
+                        taskEmitResolvers[index][1]();
+                    });
                 }
+            };
+
+            const getPromiseOfAllSources = () => {
+                return Promise.all(this.sources.map((source, index) => {
+                    if (source.input) {
+                        return source.input;
+                    } else if (source.inputPromise) {
+                        return source.inputPromise;
+                    } else if (source.inputPromises) {
+                        return Promise.all(source.inputPromises);
+                    } else if (source.previousNode) {
+                        return source.previousNode.task;
+                    } else {
+                        throw new Error(`no input for source ${index}`);
+                    }
+                }));
             };
 
             let triggered = false;
             const checkAllSourcesOKAndDo = async () => {
+                await getPromiseOfAllSources();
                 if (sourcesDone.every(a => a) && !triggered) {
                     triggered = true;
                     const result = await Promise.all(this.tasks);
-                    this.wholeTaskDoneListeners.forEach(l => l(this.task));
+                    await Promise.all(this.emitTasks);
+                    setImmediate(() => {
+                        this.wholeTaskDoneListeners.forEach(l => l(this.task));
+                    });
                     resolve(result);
                 }
             }

@@ -117,6 +117,7 @@ export abstract class ParalleledOutputNode<TIn, TOut> extends PipelineNode<TIn[]
     protected singleTaskDoneListeners: ((singleTask: NodeTask<TOut>, eleIndex: number) => void)[];
     protected wholeTaskDoneListeners: ((wholeTask: NodeTask<TOut[]>) => void)[];
     tasks: NodeTask<TOut>[];
+    emitTasks: Promise<void>[];
 
     protected constructor(props: ParalleledOutputNodeInput<TIn>) {
         super(props);
@@ -128,6 +129,7 @@ export abstract class ParalleledOutputNode<TIn, TOut> extends PipelineNode<TIn[]
         this.singleTaskDoneListeners = [];
         this.wholeTaskDoneListeners = [];
         this.tasks = [];
+        this.emitTasks = [];
     }
 
     protected get isPurePipeNode(): boolean {

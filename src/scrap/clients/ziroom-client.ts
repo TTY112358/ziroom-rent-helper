@@ -35,15 +35,13 @@ async function main() {
         const aElements = optDivElement.querySelectorAll("div.grand-child-opt a.checkbox");
         return aElements.map(a => ({url: `http:${a.getAttribute("href")}`, subDistrict: a.text.trim()}));
     });
-    const m1 = new ParallelMergeNode<
-        [{url: string, district: string},{url: string, subDistrict: string}[]],
-        {url: string, district: string, subDistrict: string}[]
-        >({
+    const m1 = new ParallelMergeNode<[{ url: string, district: string }, { url: string, subDistrict: string }[]],
+        { url: string, district: string, subDistrict: string }[]>({
         sources: [
             {previousNode: n3},
             {previousNode: n6},
         ]
-    }, ([n3Output , n6Output]) => {
+    }, ([n3Output, n6Output]) => {
         return n6Output.map(({url, subDistrict}) => ({
             url, subDistrict,
             district: n3Output.district,
@@ -55,25 +53,37 @@ async function main() {
     const n10 = new ParallelTaskNode({previousNode: n9}, ele => {
         const pageElement = ele.document.querySelector("#page") as HTMLElement | null;
         const url = ele.url;
-        const getPage = (page: number) => {
+        const getPageInfo = (page: number) => {
             if (url.endsWith('/')) {
-                return `${url.substr(0, url.length - 1)}-p${page}/`;
+                return {page, url: `${url.substr(0, url.length - 1)}-p${page}/`};
             } else {
-                return `${url}-p${page}/`;
+                return {page, url: `${url}-p${page}/`};
             }
         };
-        if (!pageElement) {
-            return [] as string[];
-        } else {
+        let pages = 0;
+        if (pageElement) {
             const spanElements = pageElement.querySelectorAll("span");
             const pageInfoSpan = spanElements.find(s => /共\d+页/.test(s.text.trim())) as HTMLElement;
-            const totalPageNumber = pageInfoSpan ? parseInt((/共(\d+)页/.exec(pageInfoSpan.text.trim()) as RegExpExecArray)[1]) : 1;
-            return new Array(totalPageNumber).fill(null).map((_, idx) => getPage(idx + 1));
+            pages = pageInfoSpan ? parseInt((/共(\d+)页/.exec(pageInfoSpan.text.trim()) as RegExpExecArray)[1]) : 1;
         }
+        return new Array(pages).fill(null).map((_, idx) => getPageInfo(idx + 1));
     });
-    const n11 = new ReduceNode({previousNode: n10});
-    const n12 = new ScrapPagePipelineNode({previousNode: n11});
-    const opt = await n12.getOutput();
+    const m2 = new ParallelMergeNode<[{ url: string, district: string, subDistrict: string }, { page: number, url: string }[]],
+        { url: string, district: string, subDistrict: string, page: number }[]>({
+        sources: [
+            {previousNode: n7},
+            {previousNode: n10},
+        ]
+    }, ([n7Output, n10Output]) => {
+            return n10Output.map(e=>({
+                ...n7Output,
+                ...e,
+            }));
+    });
+    const n11 = new ReduceNode({previousNode: m2});
+    const n12 = new ParallelTaskNode({previousNode: n11}, e=>e.url);
+    const n13 = new ScrapPagePipelineNode({previousNode: n12});
+    const opt = await n13.getOutput();
     console.log(opt);
 }
 
